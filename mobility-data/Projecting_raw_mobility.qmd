@@ -1,0 +1,197 @@
+---
+title: "Re-projecting MITMA flows onto Basic health areas"
+format: html
+---
+
+The origin destination data from R package `spanishoddata` are available at the district level, whereas we would require them to be at ABS/ZBS level, we project them using the same approach as Ponce-de-Leon et.al, 2024 splitting each MITMA district
+across BHAs by population (GHS-POP 2020, 100 m).
+
+### Access to the data
+You can download the projected mobility data directly from this [zenodo link](https://doi.org/10.5281/zenodo.23737061). 
+
+In case you want to go through how to create the projected mobility data follow the following steps: 
+
+### Requirements
+- GHS population data: because the population grids are large, we dont share the files, so one must download these .tif files for the script to work. You can download the data from  
+[here](https://human-settlement.emergency.copernicus.eu/datasets.php)
+
+### Setup
+
+```{r}
+library(sf)
+library(dplyr)
+library(tidyr)
+library(terra)
+library(exactextractr)
+library(spanishoddata)
+library(arrow)
+
+spod_set_data_dir("data/spanish_od")
+cat_geometry <- read_sf("./covid19-mobility-healthzones/outputs/catalunya/geometry/cat_abs.gpkg")
+mad_geometry <- read_sf("./covid19-mobility-healthzones/outputs/madrid/geometry/mad_zbs.gpkg")
+
+```
+
+### 1. MITMA data: connect if converted, download only if not
+
+The DuckDB file is created once (about 17 GB). Every later session just connects to it.
+
+```{r}
+db_file <- list.files("data/spanish_od", pattern = "\\.duckdb$",
+                      recursive = TRUE, full.names = TRUE)
+
+if (length(db_file) == 0) {
+  db_file <- spod_convert(type = "od", zones = "distr",
+                          dates = c(start = "2020-02-14", end = "2021-05-09"),
+                          save_format = "duckdb")
+}
+stopifnot(length(db_file) == 1)
+od_full <- spod_connect(db_file)
+
+# completeness: expect 451 dates, 2020-02-14 to 2021-05-09
+od_full |>
+  summarise(n_dates = n_distinct(date), first = min(date), last = max(date)) |>
+  collect()
+```
+
+### 2. Overlay: build once, then reuse
+
+`w` is the share of a MITMA district's population living in a BHA. It is
+divided by the *whole* district's population, so border districts only
+send their Catalan share of trips.
+
+```{r}
+build_overlay <- function(bha, pop) {
+  crs_work <- st_crs(pop)
+
+  bha <- bha |> st_transform(crs_work) |> st_set_precision(1) |> st_make_valid()
+  mitma <- spod_get_zones("dist", ver = 1) |>
+    st_transform(crs_work) |> st_set_precision(1) |> st_make_valid() |>
+    st_filter(bha)
+
+  pop <- crop(pop, vect(mitma))
+  stopifnot(global(pop, "min", na.rm = TRUE)[[1]] >= 0)
+
+  pieces <- st_intersection(select(mitma, mitma_id = id),
+                            select(bha, bha_id = id)) |>
+    st_collection_extract("POLYGON")
+
+  pieces$pop <- exact_extract(pop, pieces, "sum", progress = FALSE)
+  mitma$pop  <- exact_extract(pop, mitma,  "sum", progress = FALSE)
+
+  pieces |>
+    st_drop_geometry() |>
+    group_by(mitma_id, bha_id) |>
+    summarise(pop_piece = sum(pop), .groups = "drop") |>
+    left_join(st_drop_geometry(mitma) |> select(mitma_id = id, pop_district = pop),
+              by = "mitma_id") |>
+    mutate(w = pop_piece / pop_district) |>
+    filter(w > 0)
+}
+
+overlay_file <- "data/overlay_cat.rds"
+if (file.exists(overlay_file)) {
+  overlay_cat <- readRDS(overlay_file)
+} else {
+  pop <- vrt(list.files("data/ghs_pop", pattern = "\\.tif$",
+                        full.names = TRUE, recursive = TRUE))
+  overlay_cat <- build_overlay(cat_geometry, pop)
+  saveRDS(overlay_cat, overlay_file)
+}
+
+# check: ~1 inside Catalunya, <1 at the border, never >1
+overlay_cat |> group_by(mitma_id) |> summarise(s = sum(w)) |> pull(s) |> summary()
+```
+
+### 3. The re-projection function
+
+M_bha[j,k] = sum_i sum_l w[i,j] * M_mitma[i,l] * w[l,k], written as two joins.
+Everything runs inside DuckDB; only the final BHA table comes into R.
+
+```{r}
+project_od <- function(od, overlay) {
+  ov  <- copy_to(dbplyr::remote_con(od), overlay, "overlay_tmp", overwrite = TRUE)
+  ids <- unique(overlay$mitma_id)
+
+  od |>
+    filter(id_origin %in% ids, id_destination %in% ids) |>
+    mutate(id_origin      = as.character(id_origin),
+           id_destination = as.character(id_destination)) |>
+    group_by(date, id_origin, id_destination) |>
+    summarise(trips = sum(n_trips, na.rm = TRUE), .groups = "drop") |>
+    inner_join(ov |> select(id_origin = mitma_id, source = bha_id, w_o = w),
+               by = "id_origin") |>
+    inner_join(ov |> select(id_destination = mitma_id, target = bha_id, w_d = w),
+               by = "id_destination") |>
+    group_by(date, source, target) |>
+    summarise(trips = sum(trips * w_o * w_d, na.rm = TRUE), .groups = "drop") |>
+    collect()
+}
+```
+
+
+### 4. Full period, one month at a time
+
+Each month is saved as it finishes; months already on disk are skipped, so
+after a crash you just rerun this chunk.
+
+```{r}
+out_dir <- "data/cat_od_bha_reprojected"
+dir.create(out_dir, showWarnings = FALSE)
+months <- seq(as.Date("2020-02-01"), as.Date("2021-05-01"), by = "month")
+
+for (i in seq_along(months)) {
+  start_d <- months[i]
+  end_d   <- seq(start_d, by = "month", length.out = 2)[2] - 1
+  file    <- file.path(out_dir, paste0(format(start_d, "%Y-%m"), ".parquet"))
+  if (file.exists(file)) next
+
+  part <- project_od(od_full |> filter(date >= start_d, date <= end_d), overlay_cat)
+  write_parquet(part, file)
+  message(format(start_d, "%Y-%m"), ": ", nrow(part), " rows")
+}
+```
+
+### 5. Load the result
+
+```{r}
+cat_od_new <- open_dataset(out_dir)   # lazy: filter/summarise before collect()
+```
+
+
+### For Madrid
+
+##preojecting the data
+```{r}
+reproject_months <- function(od_full, overlay, out_dir) {
+  dir.create(out_dir, showWarnings = FALSE)
+  months <- seq(as.Date("2020-02-01"), as.Date("2021-05-01"), by = "month")
+
+  for (i in seq_along(months)) {
+    start_d <- months[i]
+    end_d   <- seq(start_d, by = "month", length.out = 2)[2] - 1
+    file    <- file.path(out_dir, paste0(format(start_d, "%Y-%m"), ".parquet"))
+    if (file.exists(file)) next
+
+    part <- project_od(od_full |> filter(date >= start_d, date <= end_d), overlay)
+    write_parquet(part, file)
+    message(format(start_d, "%Y-%m"), ": ", nrow(part), " rows")
+  }
+}
+```
+
+### creating overlay with population data if it already is not done
+```{r}
+overlay_file <- "data/overlay_mad.rds"
+if (file.exists(overlay_file)) {
+  overlay_mad <- readRDS(overlay_file)
+} else {
+  pop <- vrt(list.files("data/ghs_pop", pattern = "\\.tif$",
+                        full.names = TRUE, recursive = TRUE))
+  overlay_mad <- build_overlay(mad_geometry, pop)
+  saveRDS(overlay_mad, overlay_file)
+}
+
+reproject_months(od_full, overlay_mad, "data/mad_od_bha_reprojected")
+```
+

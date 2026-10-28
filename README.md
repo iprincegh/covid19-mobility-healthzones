@@ -45,6 +45,17 @@ cases = read.csv("https://raw.githubusercontent.com/iprincegh/covid19-mobility-h
 	colClasses = c(id = "character"))
 ```
 
+The panel tables as csv are release assets. To read one in R without
+downloading it by hand:
+
+```r
+url = "https://github.com/iprincegh/covid19-mobility-healthzones/releases/download/v1.0/cat_abs_main_noncollinear.csv"
+panel = read.csv(url, colClasses = c(id = "character"))
+```
+
+The other assets are `cat_abs_full_allcovariates.csv`,
+`mad_zbs_main_noncollinear.csv` and `mad_zbs_full_allcovariates.csv`.
+
 Keep `colClasses = c(id = "character")` so `id` keeps its leading zeros.
 
 ## How to rebuild

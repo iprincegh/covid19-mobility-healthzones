@@ -1,0 +1,11 @@
+data/
+outputs/*/panel/*.csv
+*.Rproj
+.Rproj.user/
+.Rhistory
+.RData
+Rplots.pdf
+reports/*.html
+reports/*_files/
+.quarto/
+.DS_Store

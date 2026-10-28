@@ -1,0 +1,66 @@
+---
+title: "Census sections to health areas: assignment check"
+format:
+  html:
+    embed-resources: true
+execute:
+  warning: false
+  message: false
+---
+
+Covariates are built from census sections. Sections and health areas were
+drawn independently and only mostly nest. Two rules move covariates across
+(`helpers/census_sections.R`):
+
+- **population** (main): a section straddling health areas is split by where its
+  residents live on the GHS-POP 100 m grid (dasymetric, Pebesma & Bivand ch. 5.3);
+- **point** (sensitivity): the whole section goes to the health area holding its
+  point on surface (supervisor's rule).
+
+Maps are in `figures.qmd`. Render with `quarto render reports/<file>.qmd` from the repository folder.
+
+```{r}
+#| include: false
+root = normalizePath(if (dir.exists("helpers")) "." else "..")
+setwd(root)
+knitr::opts_knit$set(root.dir = root)
+```
+
+```{r}
+source("helpers/regions.R"); source("helpers/tables.R"); source("helpers/census_sections.R"); source("helpers/figures.R")
+cat_x = section_check("catalunya")
+mad_x = section_check("madrid")
+```
+
+## How well the point rule nests
+
+Share of each section's residents living in the health area the point rule picks.
+
+```{r}
+lapply(list(catalunya = cat_x, madrid = mad_x), \(x) st_drop_geometry(x$sections) |>
+	count(share_class, name = "sections")) |>
+	bind_rows(.id = "region") |>
+	pivot_wider(names_from = region, values_from = sections) |>
+	knitr::kable()
+```
+
+## What the rule changes
+
+Area covariates under both rules. Population totals are identical; points off
+the 1:1 line are health areas whose covariates moved.
+
+```{r}
+cmp = list(catalunya = rule_comparison("catalunya"), madrid = rule_comparison("madrid"))
+bind_rows(cmp, .id = "region") |>
+	group_by(region, name) |>
+	summarise(r = cor(point, population), median_abs_pct = median(abs(diff_pct)),
+		areas_over_5pct = sum(abs(diff_pct) > 5), max_abs_pct = max(abs(diff_pct)), .groups = "drop") |>
+	knitr::kable(digits = 3)
+```
+
+```{r}
+#| fig-height: 6
+plot_rule_scatter(cmp$catalunya, "Catalunya")
+plot_rule_scatter(cmp$madrid, "Madrid")
+```
+

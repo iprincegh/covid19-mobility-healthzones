@@ -1,0 +1,81 @@
+---
+title: "Area covariates: collinearity and the main-table selection"
+format:
+  html:
+    embed-resources: true
+execute:
+  warning: false
+---
+
+Screens all static covariates of the full tables (`outputs/<region>/panel/*_full_allcovariates`),
+separately for each region, and checks the subset kept in the main tables
+(`MAIN` in `helpers/panel_table.R`). Counts and density are screened on a log scale,
+as they would usually enter a model. VIF is the diagonal of the inverse
+correlation matrix, so it needs no model. Render with `quarto render reports/<file>.qmd` from the repository folder.
+
+```{r}
+#| include: false
+root = normalizePath(if (dir.exists("helpers")) "." else "..")
+setwd(root)
+knitr::opts_knit$set(root.dir = root)
+```
+
+```{r}
+library(arrow); library(dplyr); library(tidyr); library(ggplot2)
+source("helpers/panel_table.R")   # MAIN
+
+static = c("income_median", "gini", "pct_65plus", "hh_size", "pct_foreign", "pct_higher_edu",
+	"unemployment", "pct_rented", "pct_hh5plus", "density", "built_share", "buildings_per_km2",
+	"lu_residential", "lu_commercial", "lu_industrial", "lu_agricultural", "lu_green",
+	"poi_industrial", "poi_retail", "poi_transport", "poi_essential", "poi_food", "poi_recreation",
+	"poi_education", "poi_religious", "poi_buildings", "poi_health", "n_pharmacy")
+logged = c("density", "buildings_per_km2", grep("^(poi_|n_)", static, value = TRUE))
+areas = \(f) read_parquet(f) |>
+	filter(date == min(date)) |>
+	select(all_of(static)) |>
+	mutate(across(all_of(logged), log1p))
+cov = list(catalunya = areas("outputs/catalunya/panel/cat_abs_full_allcovariates.parquet"),
+	madrid = areas("outputs/madrid/panel/mad_zbs_full_allcovariates.parquet"))
+vif = \(x) diag(solve(cor(x)))
+```
+
+## Correlation, all static covariates
+
+```{r}
+#| fig-height: 9
+corr = lapply(cov, \(x) cor(x, method = "spearman"))
+lapply(corr, \(m) as.data.frame(as.table(m))) |>
+	bind_rows(.id = "region") |>
+	ggplot(aes(Var1, Var2, fill = Freq)) +
+	geom_tile(colour = "white") +
+	scale_fill_distiller(palette = "RdBu", limits = c(-1, 1), direction = 1, name = "rho") +
+	facet_wrap(~ region, ncol = 1) +
+	labs(x = NULL, y = NULL) +
+	theme_minimal() +
+	theme(axis.text.x = element_text(angle = 60, hjust = 1, size = 7), axis.text.y = element_text(size = 7))
+```
+
+Pairs with |rho| > 0.8:
+
+```{r}
+lapply(corr, \(m) as.data.frame(as.table(m))) |>
+	bind_rows(.id = "region") |>
+	filter(as.integer(Var1) < as.integer(Var2), abs(Freq) > 0.8) |>
+	arrange(region, -abs(Freq)) |>
+	knitr::kable(digits = 2, col.names = c("region", "covariate", "covariate", "rho"))
+```
+
+## VIF: all static covariates vs the main table
+
+```{r}
+main = intersect(MAIN, static)
+bind_rows(
+	lapply(cov, \(x) vif(x)) |> bind_rows(.id = "region") |> mutate(set = "all"),
+	lapply(cov, \(x) vif(x[main])) |> bind_rows(.id = "region") |> mutate(set = "main")
+) |>
+	pivot_longer(-c(region, set), values_drop_na = TRUE) |>
+	pivot_wider(names_from = c(region, set), values_from = value) |>
+	mutate(in_main = name %in% main) |>
+	arrange(-in_main) |>
+	knitr::kable(digits = 1)
+```

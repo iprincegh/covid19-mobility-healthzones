@@ -1,0 +1,190 @@
+---
+title: "Figures: COVID-19 cases, mobility and covariates"
+format:
+  html:
+    embed-resources: true
+execute:
+  warning: false
+  message: false
+knitr:
+  opts_chunk:
+    fig.width: 9
+    fig.height: 7
+    dpi: 200
+---
+
+Figures of the health areas (ABS in Catalunya, ZBS in Madrid), one region per
+figure, in each region's UTM with longitude / latitude axes.
+
+```{r}
+#| include: false
+root = normalizePath(if (dir.exists("helpers")) "." else "..")
+setwd(root)
+knitr::opts_knit$set(root.dir = root)
+```
+
+Loads the health areas, the full tables, weekly series, and the restriction periods and events.
+
+```{r}
+source("helpers/regions.R"); source("helpers/tables.R"); source("helpers/osm.R"); source("helpers/restrictions.R"); source("helpers/figures.R")
+library(arrow)
+
+areas = list(catalunya = area_geometry("catalunya"), madrid = area_geometry("madrid"))
+panel = list(catalunya = read_parquet("outputs/catalunya/panel/cat_abs_full_allcovariates.parquet"),
+	madrid = read_parquet("outputs/madrid/panel/mad_zbs_full_allcovariates.parquet"))
+weekly = lapply(panel, \(p) p |>
+	mutate(week = as.Date(cut(date, "week"))) |>
+	group_by(id, week) |>
+	summarise(days = n(), cases = 1e5 * sum(new_cases) / first(pop),
+		trips = mean(trips_internal + trips_out) / first(pop), .groups = "drop") |>
+	filter(days == 7))
+per = lapply(names(areas), periods) |> setNames(names(areas))
+events = lapply(names(areas), npi_events) |> setNames(names(areas))
+title = \(name, what) paste0(tools::toTitleCase(name), ": ", what)
+area_unit = \(name) region(name)$unit
+```
+
+Maps cumulative cases per 100,000 residents; both regions use the same classes.
+
+```{r}
+inc = lapply(panel, \(p) p |> group_by(id) |> summarise(inc = 1e5 * sum(new_cases) / first(pop)))
+brks = unique(quantile(unlist(lapply(inc, `[[`, "inc")), seq(0, 1, length.out = 7), names = FALSE))
+lab = class_labels(brks, \(b) format(round(b, -2), big.mark = ",", trim = TRUE))
+for (name in names(areas))
+	print(map_classes(areas[[name]], inc[[name]], "inc", brks, lab, class_scale(lab, "YlOrRd", "Cases per 100,000")) +
+		labs(title = title(name, "cumulative COVID-19 cases per 100,000, 2020-03-01 to 2021-05-01")))
+```
+
+Plots weekly cases per 100,000 in every health area on a log scale, with the regional trend.
+
+```{r}
+#| fig-height: 5
+for (name in names(areas))
+	print(plot_spaghetti(weekly[[name]], "cases", title(name, paste("weekly COVID-19 cases per 100,000 by", area_unit(name))),
+		"Cases per 100,000 (log scale)", events[[name]], log = TRUE))
+```
+
+Maps average weekly cases per 100,000 in each policy period.
+
+```{r}
+#| fig-height: 6
+pinc = lapply(names(areas), \(r) {
+	start = per[[r]]$start
+	panel[[r]] |>
+		mutate(period = paste0("p", findInterval(date, start))) |>
+		group_by(id, period) |>
+		summarise(v = 1e5 * sum(new_cases) / first(pop) / (n() / 7), .groups = "drop") |>
+		pivot_wider(names_from = period, values_from = v)
+}) |> setNames(names(areas))
+brks = unique(quantile(unlist(lapply(pinc, \(x) unlist(x[-1]))), seq(0, 1, length.out = 7), names = FALSE))
+lab = class_labels(brks, \(b) format(round(b), big.mark = ",", trim = TRUE))
+for (name in names(areas))
+	print(map_facets(pinc[[name]], areas[[name]], paste0("p", seq_len(nrow(per[[name]]))), brks, lab, "YlOrRd",
+		"Weekly cases per 100,000", title(name, "average weekly COVID-19 cases per 100,000 by policy period"),
+		facet_labels = per[[name]]$label))
+```
+
+Plots daily trips per resident in every health area (weekly mean), with the regional trend.
+
+```{r}
+#| fig-height: 5
+for (name in names(areas))
+	print(plot_spaghetti(weekly[[name]], "trips", title(name, paste("daily trips per resident by", area_unit(name))),
+		"Trips per resident", events[[name]]))
+```
+
+Maps the change in daily trips between 1-13 March 2020 and April 2020.
+
+```{r}
+chg = lapply(panel, \(p) p |>
+	mutate(trips = trips_internal + trips_out,
+		period = case_when(date <= as.Date("2020-03-13") ~ "before", format(date, "%Y-%m") == "2020-04" ~ "lockdown")) |>
+	filter(!is.na(period)) |>
+	group_by(id, period) |>
+	summarise(trips = mean(trips), .groups = "drop") |>
+	pivot_wider(names_from = period, values_from = trips) |>
+	mutate(change = 100 * (lockdown / before - 1)))
+brks = c(-80, -60, -50, -45, -40, -30, 25)
+lab = c("< -60%", "-60 to -50%", "-50 to -45%", "-45 to -40%", "-40 to -30%", "> -30%")
+for (name in names(areas))
+	print(map_classes(areas[[name]], chg[[name]], "change", brks, lab, class_scale(lab, "Blues", "Change in daily trips", reverse = TRUE)) +
+		labs(title = title(name, "change in daily trips, April 2020 against 1-13 March 2020")))
+```
+
+Maps daily trips per resident in each policy period.
+
+```{r}
+#| fig-height: 6
+ptrips = lapply(names(areas), \(r) {
+	start = per[[r]]$start
+	panel[[r]] |>
+		mutate(period = paste0("p", findInterval(date, start))) |>
+		group_by(id, period) |>
+		summarise(v = mean(trips_internal + trips_out) / first(pop), .groups = "drop") |>
+		pivot_wider(names_from = period, values_from = v)
+}) |> setNames(names(areas))
+brks = unique(quantile(unlist(lapply(ptrips, \(x) unlist(x[-1]))), seq(0, 1, length.out = 7), names = FALSE))
+lab = class_labels(brks, \(b) format(round(b, 1), trim = TRUE))
+for (name in names(areas))
+	print(map_facets(ptrips[[name]], areas[[name]], paste0("p", seq_len(nrow(per[[name]]))), brks, lab, "Blues",
+		"Daily trips per resident", title(name, "daily trips per resident by policy period"),
+		facet_labels = per[[name]]$label))
+```
+
+Maps the census covariates, each with its own classes.
+
+```{r}
+cov = c("income_median", "gini", "pct_65plus", "hh_size", "pct_foreign")
+for (name in names(areas))
+	print(map_values(panel[[name]] |> distinct(id, across(all_of(cov))), areas[[name]], cov,
+		title(name, "census covariates (2020-2021)"), "Purples"))
+```
+
+Maps every point of interest; health facilities in red.
+
+```{r}
+for (name in names(areas))
+	print(map_pois(osm_points(name, areas[[name]]), areas[[name]], title(name, "points of interest (OpenStreetMap)")))
+```
+
+Maps the number of health facilities in each health area.
+
+```{r}
+brks = c(-Inf, 0, 1, 3, 5, 10, 20, Inf)
+lab = c("0", "1", "2-3", "4-5", "6-10", "11-20", "> 20")
+for (name in names(areas))
+	print(map_classes(areas[[name]], read_table(name, "osm_pois"), "poi_health", brks, lab, class_scale(lab, "Reds", "Health facilities")) +
+		labs(title = title(name, paste("health facilities per", area_unit(name), "(hospitals, clinics, doctors, dentists, nursing homes)"))))
+```
+
+Maps the number of other points of interest per health area, by category.
+
+```{r}
+#| fig-height: 11
+poi = c("poi_retail", "poi_food", "poi_essential", "poi_transport", "poi_education",
+	"poi_recreation", "poi_religious", "poi_buildings", "poi_industrial", "poi_other")
+for (name in names(areas))
+	print(map_facets(read_table(name, "osm_pois"), areas[[name]], poi,
+		breaks = c(-Inf, 0, 5, 20, 50, 100, 250, Inf), labels = c("0", "1-5", "6-20", "21-50", "51-100", "101-250", "> 250"),
+		palette = "YlGnBu", key = paste("Count per", area_unit(name)), title = title(name, paste("points of interest per", area_unit(name), "by category"))))
+```
+
+Maps the share of each health area covered by buildings (GHS-BUILT-S 2020).
+
+```{r}
+brks = c(0, .01, .05, .1, .25, .5, 1)
+lab = c("< 1%", "1-5%", "5-10%", "10-25%", "25-50%", "> 50%")
+for (name in names(areas))
+	print(map_classes(areas[[name]], read_table(name, "landuse"), "built_share", brks, lab, class_scale(lab, "Greys", "Built-up share")) +
+		labs(title = title(name, paste("share of each", area_unit(name), "covered by buildings"))))
+```
+
+Maps the share of each health area in each OpenStreetMap land-use class.
+
+```{r}
+lu = c("lu_residential", "lu_commercial", "lu_industrial", "lu_agricultural", "lu_green")
+for (name in names(areas))
+	print(map_facets(read_table(name, "landuse"), areas[[name]], lu,
+		breaks = c(0, .01, .05, .1, .25, .5, 1), labels = c("< 1%", "1-5%", "5-10%", "10-25%", "25-50%", "> 50%"),
+		palette = "Greens", key = paste("Share of", area_unit(name)), title = title(name, "land use (OpenStreetMap)")))
+```

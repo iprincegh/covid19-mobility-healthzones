@@ -1,0 +1,99 @@
+---
+title: "Flow-Maps panels: coverage checks"
+format:
+  html:
+    embed-resources: true
+execute:
+  warning: false
+---
+
+Checks the daily tables written by `scripts/1_areas_cases_mobility.R` (read from the full panel tables),
+2020-03-01 to 2021-05-01. Render with `quarto render reports/<file>.qmd` from the repository folder.
+
+```{r}
+#| include: false
+root = normalizePath(if (dir.exists("helpers")) "." else "..")
+setwd(root)
+knitr::opts_knit$set(root.dir = root)
+```
+
+```{r}
+library(arrow); library(dplyr); library(tidyr); library(ggplot2)
+
+cat_panel = read_parquet("outputs/catalunya/panel/cat_abs_full_allcovariates.parquet")
+mad_panel = read_parquet("outputs/madrid/panel/mad_zbs_full_allcovariates.parquet")
+panels = bind_rows(catalunya = cat_panel, madrid = mad_panel, .id = "region")
+```
+
+## Coverage
+
+Areas, days and missing values per region. Every count of missing values
+should be zero inside this window.
+
+```{r}
+panels |>
+	group_by(region) |>
+	summarise(
+		areas = n_distinct(id), days = n_distinct(date),
+		first = min(date), last = max(date),
+		cases = sum(new_cases, na.rm = TRUE),
+		across(c(new_cases, trips_internal, trips_out, trips_in, moving_population, pop),
+			\(x) sum(is.na(x)), .names = "na_{.col}")
+	) |>
+	knitr::kable()
+```
+
+## Cases and mobility over time
+
+```{r}
+#| fig-height: 6
+panels |>
+	group_by(region, date) |>
+	summarise(`new cases` = sum(new_cases), `trips (all)` = sum(trips_internal + trips_out),
+		.groups = "drop") |>
+	pivot_longer(-c(region, date)) |>
+	ggplot(aes(date, value)) +
+	geom_line(linewidth = 0.3) +
+	facet_grid(name ~ region, scales = "free_y") +
+	labs(x = NULL, y = NULL) +
+	theme_minimal()
+```
+
+## Catalunya vaccination
+
+Population-weighted coverage across Catalunya, and the spread across ABS on
+the last day.
+
+```{r}
+cat_panel |>
+	group_by(date) |>
+	summarise(across(c(vacc_dose1, vacc_complete), \(x) weighted.mean(x, pop))) |>
+	pivot_longer(-date) |>
+	filter(date >= as.Date("2020-12-01")) |>
+	ggplot(aes(date, value, colour = name)) +
+	geom_line() +
+	scale_y_continuous(labels = scales::percent) +
+	labs(x = NULL, y = "share of population", colour = NULL) +
+	theme_minimal()
+
+cat_panel |>
+	filter(date == max(date)) |>
+	summarise(across(c(vacc_dose1, vacc_complete), \(x) list(quantile(x, c(0, .25, .5, .75, 1))))) |>
+	unnest(everything()) |>
+	mutate(q = c("min", "q25", "median", "q75", "max"), .before = 1) |>
+	knitr::kable(digits = 3)
+```
+
+## Madrid reporting regime
+
+Share of Madrid days with any reported case, by weekday and regime. Under the
+weekly regime only Tuesdays should carry counts.
+
+```{r}
+mad_panel |>
+	group_by(reporting, weekday = weekdays(date), date) |>
+	summarise(any = sum(new_cases) > 0, .groups = "drop_last") |>
+	summarise(share_nonzero = mean(any), .groups = "drop") |>
+	pivot_wider(names_from = reporting, values_from = share_nonzero) |>
+	knitr::kable(digits = 2)
+```

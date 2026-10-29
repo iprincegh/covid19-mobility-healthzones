@@ -1,7 +1,7 @@
 # COVID-19 panel tables by basic health area: schema
 
-One table per region, **one row per basic health area (BHA: ABS in Catalunya, ZBS in Madrid) and day**, 2020-03-01 →
-2021-05-01 (427 days), key `id` + `date`.
+One table per region, one row per basic health area (BHA) and day, 2020-03-01 →
+2021-05-01 (427 days). Key: `id` + `date`. The BHAs are ABS in Catalunya and ZBS in Madrid.
 
 | Table | Basic health areas | Rows | Columns |
 |---|---|---|---|
@@ -10,7 +10,7 @@ One table per region, **one row per basic health area (BHA: ABS in Catalunya, ZB
 | `outputs/madrid/panel/mad_zbs_main_noncollinear` | 286 ZBS | 122,122 | 34 |
 | `outputs/madrid/panel/mad_zbs_full_allcovariates` | 286 ZBS | 122,122 | 55 |
 
-**Main table (`*_main_noncollinear`)**: covariates with low collinearity (static covariates VIF < 5):
+**Main table (`*_main_noncollinear`)**: static covariates have VIF < 5.
 
 - **keys and outcome:** `id`, `date`, `name`, `new_cases`, `total_cases`, `pop`, `reporting` (Madrid)
 - **daily:** `trips_internal`, `trips_out`, `moving_population`, `vacc_dose1` (Catalunya),
@@ -19,7 +19,7 @@ One table per region, **one row per basic health area (BHA: ABS in Catalunya, ZB
   `lu_commercial`, `lu_industrial`, `lu_agricultural`, `lu_green`, `poi_retail`, `poi_transport`,
   `poi_education`, `poi_religious`, `poi_buildings`, `poi_health`
 
-**Full table (`*_full_allcovariates`)**: every column below. Left out of the main table:
+**Full table (`*_full_allcovariates`)**: all columns below. Columns not in the main table:
 
 | Left out | Collinear with |
 |---|---|
@@ -36,12 +36,11 @@ One table per region, **one row per basic health area (BHA: ABS in Catalunya, ZB
 | `total_population` | `moving_population` |
 | `temp_min`, `temp_max` | `temp_mean` |
 | `vacc_complete` | `vacc_dose1` |
-| `dist_nearest_km` | data-quality measure: distance to the nearest weather station |
+| `dist_nearest_km` | not a covariate: distance to the nearest weather station |
 
 ## Columns
 
-Each column comes from one per-source table in `outputs/<region>/tables/`
-(named `cat_abs_…` / `mad_zbs_…`).
+Each column comes from one table in `outputs/<region>/tables/` (`cat_abs_*`, `mad_zbs_*`).
 
 ### Keys, outcome and population
 
@@ -51,8 +50,8 @@ Each column comes from one per-source table in `outputs/<region>/tables/`
 | `date` | Date | day | | every daily table |
 | `name` | chr | BHA name | Flow-Maps | `*_areas` |
 | `area_km2` | num | surface, km² | | `*_areas` |
-| `new_cases` | int | confirmed cases that day; Madrid's negative revisions are subtracted from the preceding days | Flow-Maps; ABS 381, 382 from the official Catalunya series (README) | `*_cases_daily` |
-| `total_cases` | int | cumulative cases from 2020-03-01 | Flow-Maps; ABS 381, 382 as above | `*_cases_daily` |
+| `new_cases` | int | confirmed cases; corrections in the README | Flow-Maps; 381, 382 official (README) | `*_cases_daily` |
+| `total_cases` | int | cumulative cases from 2020-03-01 | as `new_cases` | `*_cases_daily` |
 | `reporting` *(Madrid)* | chr | `daily` to 2020-07-01, then `weekly`: weekly totals, mostly on Tuesdays from 2020-07-07 | Flow-Maps | `*_cases_daily` |
 | `pop` | num | residents: RCA 2021 (Catalunya), padrón 2019 (Madrid) | CatSalut, Comunidad de Madrid | `*_population` |
 
@@ -73,13 +72,12 @@ Each column comes from one per-source table in `outputs/<region>/tables/`
 | `npi_hibernation` | 0/1 | non-essential work suspended (2020-03-30 → 04-09) | RDL 10/2020 | `*_restrictions_daily` |
 | `npi_curfew` | 0/1 | curfew (from 2020-10-25) | Resolució SLT/2620/2020 (Catalunya); Decretos 29/2020, 3/2021, 4/2021 (Madrid) | `*_restrictions_daily` |
 
-Restrictions are coded at regional level.
+Restrictions are coded per region, the same for every BHA.
 
 ### Static per BHA
 
-**Census covariates** (`*_census_covariates`; INE ADRH 2020, Census 2021). Census sections that cross
-BHA borders are split by where their residents live (GHS-POP);
-`*_census_covariates_point.csv` assigns each section whole to one BHA.
+**Census covariates** (`*_census_covariates`; INE ADRH 2020, Census 2021), aggregated
+from census sections as described in the README.
 
 | Column | Content |
 |---|---|
@@ -91,8 +89,8 @@ BHA borders are split by where their residents live (GHS-POP);
 | `density` | people per km² |
 
 **Points of interest and health facilities** (`*_osm_pois`; OpenStreetMap, Geofabrik
-extracts): counts of features inside each BHA. Polygons count as one point,
-and a feature mapped twice counts once.
+extracts): counts of features in each BHA. A polygon counts as one feature; a
+feature mapped twice counts once.
 
 | Column | Category | `fclass` → OSM tag |
 |---|---|---|
@@ -107,9 +105,9 @@ and a feature mapped twice counts once.
 | `poi_industrial` | Industrial and construction (land-use polygons) | `industrial` landuse=industrial · `quarry` landuse=quarry · `farmyard` landuse=farmyard · `construction` landuse=construction |
 | `poi_buildings` | Residential and commercial buildings (building polygons) | building=apartments · building=commercial · building=office |
 | `poi_other` | Other | remaining classes; in these extracts `graveyard` amenity=grave_yard, landuse=cemetery, and `prison` amenity=prison |
-| `n_pharmacy` | Pharmacies, also counted on their own | `pharmacy` amenity=pharmacy |
+| `n_pharmacy` | Pharmacies (also in `poi_essential`) | `pharmacy` amenity=pharmacy |
 
-Excluded from the counts (street furniture, landmarks, open land):
+Not counted:
 - **Street furniture:** `bench`, `waste_basket`, `drinking_water`, `toilet`,
   `post_box`, `telephone`, `fountain`, `shelter`, `camera_surveillance`,
   `recycling*`, `vending*`

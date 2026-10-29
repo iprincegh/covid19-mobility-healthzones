@@ -5,7 +5,8 @@ Daily COVID-19 cases, mobility and covariates per basic health area (BHA),
 Catalunya and the 286 ZBS (zonas básicas de salud) of the Comunidad de Madrid.
 
 - **Panel tables**, one row per BHA and day: `outputs/<region>/panel/`;
-  as csv in the [latest release](https://github.com/iprincegh/covid19-mobility-healthzones/releases/latest). Columns: [SCHEMA.md](SCHEMA.md).
+  as csv in the [latest release](https://github.com/iprincegh/covid19-mobility-healthzones/releases/latest).
+- **File contents and columns:** [SCHEMA.md](SCHEMA.md).
 - **Mobility between BHAs**, daily MITMA trips: on Zenodo,
   [doi:10.5281/zenodo.23737062](https://doi.org/10.5281/zenodo.23737062) (see [Mobility](#mobility)).
 
@@ -70,39 +71,6 @@ R packages: sf, dplyr, tidyr, data.table, arrow, terra, exactextractr, spdep;
 for the reports also ggplot2, patchwork, classInt, RColorBrewer, mgcv. Render a
 report with `quarto render reports/figures.qmd`.
 
-## Outputs
-
-`<region>` is `catalunya` (files `cat_abs_*`) or `madrid` (files `mad_zbs_*`).
-
-**`outputs/<region>/panel/`**
-
-| File | Content |
-|---|---|
-| `*_main_noncollinear.parquet` | 34 columns; covariates with low collinearity |
-| `*_full_allcovariates.parquet` | all covariates: 56 columns (Catalunya), 55 (Madrid) |
-
-**`outputs/<region>/tables/`**: one csv per source, joined on the key.
-
-| Table | Key | Content |
-|---|---|---|
-| `*_areas.csv` | `id` | BHA name, `area_km2` |
-| `*_population.csv` | `id` | `pop` |
-| `*_census_covariates.csv` | `id` | income, inequality, age, households, nationality, education, labour, housing, density |
-| `*_census_covariates_point.csv` | `id` | the same, point-in-polygon assignment |
-| `*_osm_pois.csv` | `id` | points of interest by category, health facilities, pharmacies |
-| `*_landuse.csv` | `id` | building density, land-use shares |
-| `*_cases_daily.csv` | `id` + `date` | new and cumulative cases |
-| `*_mobility_daily.csv` | `id` + `date` | trips within, out of and into the BHA; MITMA population |
-| `cat_abs_vaccination_daily.csv` | `id` + `date` | vaccination coverage |
-| `*_weather_daily.csv` | `id` + `date` | temperature, precipitation, humidity (2020-01-01 → 2022-07-31) |
-| `*_calendar_daily.csv` | `date` | day of week, public holiday |
-| `*_restrictions_daily.csv` | `date` | state of alarm, work suspension, curfew |
-
-**`outputs/<region>/geometry/`**: `*.gpkg` (polygons, key `id`) and
-`*_topology.rds` (adjacency matrix, distances in km).
-
-Coordinates are in each region's UTM zone: EPSG:25831 (Catalunya), EPSG:25830 (Madrid).
-
 ## Cases
 
 Cases come from Flow-Maps, with two corrections:
@@ -151,22 +119,6 @@ gets the inverse-distance-weighted mean of the 5 nearest stations within 75 km
 that reported that day. `dist_nearest_km` (full table) is the distance to the
 nearest station.
 
-## Restrictions
-
-Daily 0/1 indicators in `*_restrictions_daily.csv`, defined in `helpers/restrictions.R`.
-
-| Measure | Column | Region | Dates in force | Source |
-|---|---|---|---|---|
-| First state of alarm | `npi_alarm` | Spain | 2020-03-14 → 2020-06-20 | [Real Decreto 463/2020](https://www.boe.es/eli/es/rd/2020/03/14/463), BOE 14-03-2020, and its extensions |
-| Second state of alarm | `npi_alarm` | Spain | 2020-10-25 → 2021-05-09 | [Real Decreto 926/2020](https://www.boe.es/eli/es/rd/2020/10/25/926), BOE 25-10-2020; extended by [Real Decreto 956/2020](https://www.boe.es/eli/es/rd/2020/11/03/956) |
-| Non-essential work suspended | `npi_hibernation` | Spain | 2020-03-30 → 2020-04-09 | [Real Decreto-ley 10/2020](https://www.boe.es/eli/es/rdl/2020/03/29/10), BOE 29-03-2020 |
-| Curfew, 22:00–06:00 | `npi_curfew` | Catalunya | 2020-10-25 → 2021-05-09 | [Resolució SLT/2620/2020](https://dogc.gencat.cat/es/pdogc_canals_interns/pdogc_resultats_fitxa/index.html?action=fitxa&documentId=884771&language=ca_ES&newLang=es_ES), DOGC 8254, 25-10-2020 |
-| Curfew, from 00:00 | `npi_curfew` | Madrid | 2020-10-25 → 2021-05-09 | [Decreto 29/2020](https://www.bocm.es/boletin/CM_Orden_BOCM/2020/10/26/BOCM-20201026-206.PDF), BOCM 261, 26-10-2020; 23:00 from 2021-01-18 (Decreto 3/2021); 22:00 from 2021-01-25 ([Decreto 4/2021](https://www.bocm.es/boletin/CM_Orden_BOCM/2021/01/23/BOCM-20210123-1.PDF), BOCM 19, 23-01-2021) |
-
-The first state of alarm ended at 00:00 on 2020-06-21. Both curfews began with
-the second state of alarm. Measures ending after 2021-05-01 are cut at the end
-of the panel.
-
 ## Input data
 
 `data/` is not in the repository.
@@ -197,4 +149,4 @@ Credit these sources when reusing the outputs, under their terms.
 | Agencia Estatal de Meteorología ([AEMET OpenData](https://opendata.aemet.es)) | daily weather | reuse with attribution ("© AEMET") |
 | © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors, extracts by Geofabrik | points of interest, health facilities, land use | ODbL 1.0 |
 | European Commission, JRC, [GHSL](https://human-settlement.emergency.copernicus.eu): GHS-POP and GHS-BUILT-S 2020 (R2023A) | population weights, built-up share | CC BY 4.0 |
-| BOE, DOGC and BOCM (decrees in [Restrictions](#restrictions)) | restriction dates | public legal texts |
+| BOE, DOGC and BOCM (decrees in [SCHEMA.md](SCHEMA.md)) | restriction dates | public legal texts |

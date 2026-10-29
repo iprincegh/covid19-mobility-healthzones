@@ -10,6 +10,36 @@ One table per region, one row per basic health area (BHA) and day, 2020-03-01 �
 | `outputs/madrid/panel/mad_zbs_main_noncollinear` | 286 ZBS | 122,122 | 34 |
 | `outputs/madrid/panel/mad_zbs_full_allcovariates` | 286 ZBS | 122,122 | 55 |
 
+## Files
+
+`<region>` is `catalunya` (files `cat_abs_*`) or `madrid` (files `mad_zbs_*`).
+Coordinates are in each region's UTM zone: EPSG:25831 (Catalunya), EPSG:25830 (Madrid).
+
+**`outputs/<region>/panel/`**: the tables above, as parquet; as csv in the
+[latest release](https://github.com/iprincegh/covid19-mobility-healthzones/releases/latest).
+
+**`outputs/<region>/tables/`**: one csv per source, joined on the key.
+
+| Table | Key | Content |
+|---|---|---|
+| `*_areas.csv` | `id` | BHA name, `area_km2` |
+| `*_population.csv` | `id` | `pop` |
+| `*_census_covariates.csv` | `id` | income, inequality, age, households, nationality, education, labour, housing, density |
+| `*_census_covariates_point.csv` | `id` | the same, point-in-polygon assignment |
+| `*_osm_pois.csv` | `id` | points of interest by category, health facilities, pharmacies |
+| `*_landuse.csv` | `id` | building density, land-use shares |
+| `*_cases_daily.csv` | `id` + `date` | new and cumulative cases |
+| `*_mobility_daily.csv` | `id` + `date` | trips within, out of and into the BHA; MITMA population |
+| `cat_abs_vaccination_daily.csv` | `id` + `date` | vaccination coverage |
+| `*_weather_daily.csv` | `id` + `date` | temperature, precipitation, humidity (2020-01-01 → 2022-07-31) |
+| `*_calendar_daily.csv` | `date` | day of week, public holiday |
+| `*_restrictions_daily.csv` | `date` | state of alarm, work suspension, curfew |
+
+**`outputs/<region>/geometry/`**: `*.gpkg` (polygons, key `id`) and
+`*_topology.rds` (adjacency matrix, distances in km).
+
+## Panel tables
+
 **Main table (`*_main_noncollinear`)**: static covariates have VIF < 5.
 
 - **keys and outcome:** `id`, `date`, `name`, `new_cases`, `total_cases`, `pop`, `reporting` (Madrid)
@@ -68,11 +98,21 @@ Each column comes from one table in `outputs/<region>/tables/` (`cat_abs_*`, `ma
 | `dist_nearest_km` | num | distance to the nearest weather station | AEMET | `*_weather_daily` |
 | `dow` | factor | day of week | | `*_calendar_daily` |
 | `holiday` | lgl | national or regional public holiday | DOGC, BOCM | `*_calendar_daily` |
-| `npi_alarm` | 0/1 | first state of alarm (2020-03-14 → 06-20) or second state of alarm (2020-10-25 → 2021-05-09) | RD 463/2020, RD 926/2020 (citations in README) | `*_restrictions_daily` |
-| `npi_hibernation` | 0/1 | non-essential work suspended (2020-03-30 → 04-09) | RDL 10/2020 | `*_restrictions_daily` |
-| `npi_curfew` | 0/1 | curfew (from 2020-10-25) | Resolució SLT/2620/2020 (Catalunya); Decretos 29/2020, 3/2021, 4/2021 (Madrid) | `*_restrictions_daily` |
+| `npi_alarm`, `npi_hibernation`, `npi_curfew` | 0/1 | restrictions in force, below | BOE, DOGC, BOCM | `*_restrictions_daily` |
 
-Restrictions are coded per region, the same for every BHA.
+**Restrictions** are coded per region, the same for every BHA (`helpers/restrictions.R`).
+
+| Measure | Column | Region | Dates in force | Source |
+|---|---|---|---|---|
+| First state of alarm | `npi_alarm` | Spain | 2020-03-14 → 2020-06-20 | [Real Decreto 463/2020](https://www.boe.es/eli/es/rd/2020/03/14/463), BOE 14-03-2020, and its extensions |
+| Second state of alarm | `npi_alarm` | Spain | 2020-10-25 → 2021-05-09 | [Real Decreto 926/2020](https://www.boe.es/eli/es/rd/2020/10/25/926), BOE 25-10-2020; extended by [Real Decreto 956/2020](https://www.boe.es/eli/es/rd/2020/11/03/956) |
+| Non-essential work suspended | `npi_hibernation` | Spain | 2020-03-30 → 2020-04-09 | [Real Decreto-ley 10/2020](https://www.boe.es/eli/es/rdl/2020/03/29/10), BOE 29-03-2020 |
+| Curfew, 22:00–06:00 | `npi_curfew` | Catalunya | 2020-10-25 → 2021-05-09 | [Resolució SLT/2620/2020](https://dogc.gencat.cat/es/pdogc_canals_interns/pdogc_resultats_fitxa/index.html?action=fitxa&documentId=884771&language=ca_ES&newLang=es_ES), DOGC 8254, 25-10-2020 |
+| Curfew, from 00:00 | `npi_curfew` | Madrid | 2020-10-25 → 2021-05-09 | [Decreto 29/2020](https://www.bocm.es/boletin/CM_Orden_BOCM/2020/10/26/BOCM-20201026-206.PDF), BOCM 261, 26-10-2020; 23:00 from 2021-01-18 (Decreto 3/2021); 22:00 from 2021-01-25 ([Decreto 4/2021](https://www.bocm.es/boletin/CM_Orden_BOCM/2021/01/23/BOCM-20210123-1.PDF), BOCM 19, 23-01-2021) |
+
+The first state of alarm ended at 00:00 on 2020-06-21. Both curfews began with
+the second state of alarm. Measures ending after 2021-05-01 are cut at the end
+of the panel.
 
 ### Static per BHA
 

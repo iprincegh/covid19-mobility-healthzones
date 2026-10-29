@@ -6,7 +6,7 @@ suppressPackageStartupMessages({library(arrow); library(dplyr); library(tidyr)})
 utc_date = function(x) as.Date(x, tz = "UTC")
 
 # Negative daily counts (downward revisions) are removed from the preceding
-# days, so counts stay non-negative and each health area total is unchanged
+# days, so counts stay non-negative and each BHA total is unchanged
 spread_corrections = function(n) {
 	for (t in which(n < 0)) {
 		need = -n[t]
@@ -22,7 +22,7 @@ spread_corrections = function(n) {
 	n
 }
 
-# Daily trips per health area: within, leaving, entering
+# Daily trips per BHA: within, leaving, entering
 mobility_daily = function(dir) {
 	od = open_dataset(dir)
 	flow = function(x, key, name) x |>
@@ -42,12 +42,12 @@ mobility_daily = function(dir) {
 		complete(id, date, fill = list(trips_internal = 0, trips_out = 0, trips_in = 0))
 }
 
-# One row per health area and day of the window
+# One row per BHA and day of the window
 build_panel = function(name, from = WINDOW[1], to = WINDOW[2],
 		dir = "data/flowmaps-data") {
 	cfg = region(name)
 	path = function(x) file.path(dir, paste0(cfg$prefix, x))
-	areas = read_sf(path(".geojson")) |> st_drop_geometry()
+	bha = read_sf(path(".geojson")) |> st_drop_geometry()
 	cases = read_parquet(path("_covid_cases.parquet")) |>
 		mutate(date = utc_date(date)) |>
 		select(id, date, new_cases, total_cases) |>
@@ -64,13 +64,13 @@ build_panel = function(name, from = WINDOW[1], to = WINDOW[2],
 		mutate(date = utc_date(date))
 
 	# case ids without geometry (unassigned cases) are dropped
-	drop = setdiff(cases$id, areas$id)
+	drop = setdiff(cases$id, bha$id)
 	if (length(drop))
 		message(name, ": dropping case ids without geometry: ", paste(drop, collapse = ", "),
 			" (", sum(cases$new_cases[cases$id %in% drop]), " cases)")
 
-	expand_grid(id = areas$id, date = seq(from, to, by = "day")) |>
-		left_join(areas, by = "id") |>
+	expand_grid(id = bha$id, date = seq(from, to, by = "day")) |>
+		left_join(bha, by = "id") |>
 		left_join(cases, by = c("id", "date")) |>
 		left_join(mobility_daily(cfg$mobility), by = c("id", "date")) |>
 		left_join(moves, by = c("id", "date")) |>

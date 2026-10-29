@@ -28,6 +28,6 @@ write_geometry = function(g, name) {
 	dir.create(out_dir(name, "geometry"), recursive = TRUE, showWarnings = FALSE)
 	f = file.path(out_dir(name, "geometry"), region(name)$out)
 	st_write(g, paste0(f, ".gpkg"), delete_dsn = TRUE, quiet = TRUE)
-	saveRDS(area_topology(g), paste0(f, "_topology.rds"))
-	message("wrote ", basename(f), ".gpkg + _topology.rds: ", nrow(g), " areas, ", st_crs(g)$input)
+	saveRDS(bha_topology(g), paste0(f, "_topology.rds"))
+	message("wrote ", basename(f), ".gpkg + _topology.rds: ", nrow(g), " BHAs, ", st_crs(g)$input)
 }

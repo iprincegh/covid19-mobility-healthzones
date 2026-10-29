@@ -1,4 +1,4 @@
-# Daily weather per health area: inverse-distance weighted mean of the K nearest AEMET
+# Daily weather per BHA: inverse-distance weighted mean of the K nearest AEMET
 # stations that reported each variable that day.
 
 suppressPackageStartupMessages({library(sf); library(data.table)})
@@ -6,7 +6,7 @@ suppressPackageStartupMessages({library(sf); library(data.table)})
 WEATHER = list(
 	cache = "data/covariates/raw/aemet",
 	start = "2020-01-01", end = "2022-07-31",   # window plus lead-in for lags
-	k = 5, max_km = 75, power = 2,              # stations per health area, search radius, IDW exponent
+	k = 5, max_km = 75, power = 2,              # stations per BHA, search radius, IDW exponent
 	vars = c(tmed = "temp_mean", tmin = "temp_min", tmax = "temp_max",   # AEMET name = output name
 		prec = "precip", hrMedia = "humidity")
 )
@@ -33,11 +33,11 @@ aemet_long = function() {
 }
 
 # id, date, temp_mean, temp_min, temp_max, precip, humidity, dist_nearest_km
-weather_daily = function(name, dl = aemet_long(), a = area_geometry(name)) {
+weather_daily = function(name, dl = aemet_long(), a = bha_geometry(name)) {
 	pt = st_point_on_surface(st_geometry(a))
 	st = readRDS(file.path(WEATHER$cache, "stations.rds"))
 	ss = st_as_sf(st[st$indicativo %in% unique(dl$indicativo), ], coords = c("longitud", "latitud"), crs = 4326) |>
-		st_transform(st_crs(a))   # CRS: stations onto the health areas' UTM
+		st_transform(st_crs(a))   # CRS: stations onto the BHAs' UTM
 	dmat = matrix(as.numeric(st_distance(pt, ss)), nrow(a)) / 1000   # km
 	r = rbindlist(lapply(seq_len(nrow(a)), \(i) {
 		near = which(dmat[i, ] <= WEATHER$max_km)

@@ -6,7 +6,7 @@ source("helpers/osm.R")
 source("helpers/landuse.R")
 
 for (name in names(REGIONS)) {
-	areas = area_geometry(name)
-	write_table(osm_counts(name, areas), name, "osm_pois")
-	write_table(land_use(name, areas), name, "landuse")
+	bha = bha_geometry(name)
+	write_table(osm_counts(name, bha), name, "osm_pois")
+	write_table(land_use(name, bha), name, "landuse")
 }

@@ -7,7 +7,7 @@ execute:
   warning: false
 ---
 
-Checks the daily tables written by `scripts/1_areas_cases_mobility.R` (read from the full panel tables),
+Checks the daily tables written by `scripts/1_bha_cases_mobility.R` (read from the full panel tables),
 2020-03-01 to 2021-05-01. Render with `quarto render reports/<file>.qmd` from the repository folder.
 
 ```{r}
@@ -34,7 +34,7 @@ should be zero inside this window.
 panels |>
 	group_by(region) |>
 	summarise(
-		areas = n_distinct(id), days = n_distinct(date),
+		bha = n_distinct(id), days = n_distinct(date),
 		first = min(date), last = max(date),
 		cases = sum(new_cases, na.rm = TRUE),
 		across(c(new_cases, trips_internal, trips_out, trips_in, moving_population, pop),

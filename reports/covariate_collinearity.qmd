@@ -30,12 +30,12 @@ static = c("income_median", "gini", "pct_65plus", "hh_size", "pct_foreign", "pct
 	"poi_industrial", "poi_retail", "poi_transport", "poi_essential", "poi_food", "poi_recreation",
 	"poi_education", "poi_religious", "poi_buildings", "poi_health", "n_pharmacy")
 logged = c("density", "buildings_per_km2", grep("^(poi_|n_)", static, value = TRUE))
-areas = \(f) read_parquet(f) |>
+per_bha = \(f) read_parquet(f) |>
 	filter(date == min(date)) |>
 	select(all_of(static)) |>
 	mutate(across(all_of(logged), log1p))
-cov = list(catalunya = areas("outputs/catalunya/panel/cat_abs_full_allcovariates.parquet"),
-	madrid = areas("outputs/madrid/panel/mad_zbs_full_allcovariates.parquet"))
+cov = list(catalunya = per_bha("outputs/catalunya/panel/cat_abs_full_allcovariates.parquet"),
+	madrid = per_bha("outputs/madrid/panel/mad_zbs_full_allcovariates.parquet"))
 vif = \(x) diag(solve(cor(x)))
 ```
 

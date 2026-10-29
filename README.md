@@ -1,14 +1,17 @@
-# COVID-19 cases, mobility and covariates by health area: Catalunya and Madrid
+# COVID-19 cases, mobility and covariates by basic health area: Catalunya and Madrid
 
-Daily COVID-19 cases, mobility and covariates per health area, 2020-03-01 →
-2021-05-01. Health areas are the 374 ABS (àrees bàsiques de salut) of Catalunya
-and the 286 ZBS (zonas básicas de salud) of the Comunidad de Madrid.
+Daily COVID-19 cases, mobility and covariates per BHA, 2020-03-01 →
+2021-05-01. Basic health areas (BHAs) are the 374 ABS (àrees bàsiques de salut) of
+Catalunya and the 286 ZBS (zonas básicas de salud) of the Comunidad de Madrid.
 
-**Panel tables**, one row per health area and day:
+**Panel tables**, one row per BHA and day:
 `outputs/catalunya/panel/cat_abs_main_noncollinear.parquet` and
-`outputs/madrid/panel/mad_zbs_main_noncollinear.parquet`. The same tables as
-csv are attached to the [latest release](https://github.com/iprincegh/covid19-mobility-healthzones/releases/latest).
+`outputs/madrid/panel/mad_zbs_main_noncollinear.parquet`; as csv in the
+[latest release](https://github.com/iprincegh/covid19-mobility-healthzones/releases/latest).
 Columns and sources: [SCHEMA.md](SCHEMA.md).
+
+**Mobility between BHAs** (daily MITMA trips, one parquet per month) is on
+Zenodo: [doi:10.5281/zenodo.23737062](https://doi.org/10.5281/zenodo.23737062). See [Mobility](#mobility).
 
 ## Folder layout
 
@@ -19,9 +22,10 @@ covid19-mobility-healthzones/
 ├─ reports/     figures and checks (Quarto)
 ├─ outputs/
 │  ├─ catalunya/  and  madrid/, each with:
-│  │  ├─ panel/    health area × day tables: main and full
+│  │  ├─ panel/    BHA × day tables: main and full
 │  │  ├─ tables/   one csv per source, keyed, to combine freely
 │  │  └─ geometry/ polygons, adjacency and distances
+├─ mobility-data/ MITMA trips projected onto BHAs (Quarto)
 ├─ download/    scripts that fetch the raw inputs
 └─ data/        raw inputs (not in the repository)
 ```
@@ -35,7 +39,7 @@ the working directory there once, with its absolute path:
 setwd("~/covid19-mobility-healthzones")   # where you cloned it
 cases = read.csv("outputs/catalunya/tables/cat_abs_cases_daily.csv", colClasses = c(id = "character"))
 panel = arrow::read_parquet("outputs/catalunya/panel/cat_abs_main_noncollinear.parquet")
-areas = sf::read_sf("outputs/catalunya/geometry/cat_abs.gpkg")
+bha = sf::read_sf("outputs/catalunya/geometry/cat_abs.gpkg")
 ```
 
 Or read a table straight from GitHub, with no clone:
@@ -45,16 +49,14 @@ cases = read.csv("https://raw.githubusercontent.com/iprincegh/covid19-mobility-h
 	colClasses = c(id = "character"))
 ```
 
-The panel tables as csv are release assets. To read one in R without
-downloading it by hand:
+The panel tables as csv are release assets (`cat_abs_main_noncollinear.csv`,
+`cat_abs_full_allcovariates.csv`, `mad_zbs_main_noncollinear.csv`,
+`mad_zbs_full_allcovariates.csv`), readable the same way:
 
 ```r
 url = "https://github.com/iprincegh/covid19-mobility-healthzones/releases/download/v1.0/cat_abs_main_noncollinear.csv"
 panel = read.csv(url, colClasses = c(id = "character"))
 ```
-
-The other assets are `cat_abs_full_allcovariates.csv`,
-`mad_zbs_main_noncollinear.csv` and `mad_zbs_full_allcovariates.csv`.
 
 Keep `colClasses = c(id = "character")` so `id` keeps its leading zeros.
 
@@ -70,10 +72,10 @@ With the working directory set to the repository folder, run
 
 | Script | Builds |
 |---|---|
-| `scripts/1_areas_cases_mobility.R` | health areas, geometry, population, daily cases, mobility, vaccination (Catalunya) |
-| `scripts/2_census_covariates.R` | census covariates per health area |
+| `scripts/1_bha_cases_mobility.R` | BHAs, geometry, population, daily cases, mobility, vaccination (Catalunya) |
+| `scripts/2_census_covariates.R` | census covariates per BHA |
 | `scripts/3_osm_landuse.R` | points of interest, health facilities, building density, land use |
-| `scripts/4_weather.R` | daily weather per health area |
+| `scripts/4_weather.R` | daily weather per BHA |
 | `scripts/5_panel_tables.R` | calendar, restrictions and the panel tables (main, full) |
 
 R packages: sf, dplyr, tidyr, data.table, arrow, terra, exactextractr, spdep;
@@ -90,30 +92,26 @@ Render a report with `quarto render reports/figures.qmd` from the repository fol
 | `*_full_allcovariates.parquet` | full table: every covariate (56 Catalunya, 55 Madrid) |
 
 `<region>` is `catalunya` or `madrid`; file names start with `cat_abs` or `mad_zbs`.
-The csv versions are in the [release](https://github.com/iprincegh/covid19-mobility-healthzones/releases/latest).
 
 **`outputs/<region>/tables/`**: one csv per source. Join on the key.
 
 | Table | Key | Content |
 |---|---|---|
-| `*_areas.csv` | `id` | health area name, `area_km2` |
+| `*_areas.csv` | `id` | BHA name, `area_km2` |
 | `*_population.csv` | `id` | `pop` |
 | `*_census_covariates.csv` | `id` | income, inequality, age, households, nationality, education, labour, housing, density |
 | `*_census_covariates_point.csv` | `id` | the same, point-in-polygon assignment |
 | `*_osm_pois.csv` | `id` | points of interest by category, health facilities, pharmacies |
 | `*_landuse.csv` | `id` | building density, land-use shares |
 | `*_cases_daily.csv` | `id` + `date` | new and cumulative cases |
-| `*_mobility_daily.csv` | `id` + `date` | trips within, out of and into the health area; MITMA population |
+| `*_mobility_daily.csv` | `id` + `date` | trips within, out of and into the BHA; MITMA population |
 | `cat_abs_vaccination_daily.csv` | `id` + `date` | vaccination coverage |
 | `*_weather_daily.csv` | `id` + `date` | temperature, precipitation, humidity (2020-01-01 → 2022-07-31) |
 | `*_calendar_daily.csv` | `date` | day of week, public holiday |
 | `*_restrictions_daily.csv` | `date` | state of alarm, work suspension, curfew |
 
-Read csv files with `colClasses = c(id = "character")` to keep the leading
-zeros of `id`.
-
 **`outputs/<region>/geometry/`**: `*.gpkg` (polygons, key `id`) and
-`*_topology.rds` (adjacency and distances in km between health areas).
+`*_topology.rds` (adjacency and distances in km between BHAs).
 
 ## Cases
 
@@ -127,23 +125,36 @@ Daily cases come from Flow-Maps, with two corrections:
   split by MITMA population (381: 41%, 382: 59%). Together they add up to 302
   exactly: 3,328 cases in the window.
 - **Negative daily counts (Madrid).** Downward revisions are removed from the
-  preceding days, so counts stay non-negative and each health area's total is
+  preceding days, so counts stay non-negative and each BHA's total is
   unchanged.
 
-## Census covariates: from sections to health areas
+## Mobility
+
+MITMA trips are published between districts.
+`mobility-data/Projecting_raw_mobility.qmd` projects them onto BHAs as in
+Ponce-de-Leon et al. (2024): each district is split across BHAs by where its
+residents live (GHS-POP 2020, 100 m), and a trip from district *i* to *l*
+becomes trips from BHA *j* to *k* weighted by both shares. The result
+(`source`, `target`, `trips` per day) is on Zenodo; `download/mobility_zenodo.R`
+puts it in `data/`, so the 38 GB MITMA download is only needed to rebuild it.
+Cite it as:
+
+> Niraula, P., & Oppong Boakye, P. (2026). *Mobility data from MITMA, Spain reprojected at Zona Básica de Salud (ZBS) level for Madrid and Àrea Bàsica de Salut (ABS) for Catalunya* (Version 1.0) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.23737062
+
+## Census covariates: from sections to BHAs
 
 Census covariates are published per census section (INE, about 1,000–2,500
-residents). Each health area holds several sections (median 13–15), so the
+residents). Each BHA holds several sections (median 13–15), so the
 covariates are aggregated from small units to larger ones.
 
-**Sections crossing a border.** Sections and health areas were drawn
-independently, so a few sections cross health area borders. Such a section is split
-between the health areas by where its residents live (GHS-POP 2020, 100 m grid); a
-section entirely inside one health area goes to it whole.
+**Sections crossing a border.** Sections and BHAs were drawn
+independently, so a few sections cross BHA borders. Such a section is split
+between the BHAs by where its residents live (GHS-POP 2020, 100 m grid); a
+section entirely inside one BHA goes to it whole.
 `*_census_covariates_point.csv` uses a simpler rule: each section goes whole
-to the health area containing its point on surface.
+to the BHA containing its point on surface.
 
-**How values are combined.** Example: a health area made of section A (1,000
+**How values are combined.** Example: a BHA made of section A (1,000
 residents, 300 aged 65+, median income €15,000) and section B (3,000 residents,
 300 aged 65+, median income €25,000).
 
@@ -157,8 +168,8 @@ residents, 300 aged 65+, median income €15,000) and section B (3,000 residents
 
 | Folder | What it is | Source |
 |---|---|---|
-| `flowmaps-data/` | COVID-19 cases and health area geometry | BSC COVID-19 Flow-Maps, Zenodo 12207212 |
-| `cat_od_bha_reprojected/`, `mad_od_bha_reprojected/` | MITMA trips between health areas, one parquet per month | derived from `spanish_od/` |
+| `flowmaps-data/` | COVID-19 cases and BHA geometry | BSC COVID-19 Flow-Maps, Zenodo 12207212 |
+| `cat_od_bha_reprojected/`, `mad_od_bha_reprojected/` | MITMA trips between BHAs, one parquet per month | `mobility-data/Projecting_raw_mobility.qmd`; on Zenodo, fetched by `download/mobility_zenodo.R` |
 | `spanish_od/` | MITMA origin–destination matrices (38 GB) | MITMA, `spanishoddata` |
 | `health_data/` | official case series and health-zone boundaries | regional open-data portals |
 | `covariates/raw/` | INE ADRH 2020, Census 2021, census sections 2020; AEMET and CatSalut data | INE, AEMET, CatSalut |
@@ -168,14 +179,14 @@ residents, 300 aged 65+, median income €15,000) and section B (3,000 residents
 ## Weather
 
 Daily temperature, precipitation and humidity from 105 AEMET stations. Each
-health area gets an inverse-distance-weighted mean of the 5 nearest stations within
+BHA gets an inverse-distance-weighted mean of the 5 nearest stations within
 75 km that reported that day. `dist_nearest_km` (full table) gives the distance
 to the nearest station.
 
 ## Restrictions
 
 Daily 0/1 indicators in `*_restrictions_daily.csv`, set from the decrees
-(`helpers/restrictions.R`). The figures use the same names.
+(`helpers/restrictions.R`).
 
 | Measure | Column | Region | Dates in force | Source |
 |---|---|---|---|---|
@@ -201,8 +212,9 @@ and credit the sources.
 
 | Source | Used for | Licence / terms |
 |---|---|---|
-| Ponce-de-Leon, M. & Pontes, C. (2024), *From Movement to Infection: Deciphering COVID-19 Transmission via Transfer Entropy*, Zenodo, [doi:10.5281/zenodo.12207212](https://doi.org/10.5281/zenodo.12207212) (BSC COVID-19 Flow-Maps) | daily cases, health area geometry, MITMA population | CC BY 4.0 |
-| Ministerio de Transportes y Movilidad Sostenible (MITMA), open mobility data, via the `spanishoddata` R package | trips between health areas | CC BY 4.0 |
+| Ponce-de-Leon, M. & Pontes, C. (2024), *From Movement to Infection: Deciphering COVID-19 Transmission via Transfer Entropy*, Zenodo, [doi:10.5281/zenodo.12207212](https://doi.org/10.5281/zenodo.12207212) (BSC COVID-19 Flow-Maps) | daily cases, BHA geometry, MITMA population | CC BY 4.0 |
+| Ministerio de Transportes y Movilidad Sostenible (MITMA), open mobility data, via the `spanishoddata` R package | trips between BHAs | CC BY 4.0 |
+| Niraula, P., & Oppong Boakye, P. (2026). *Mobility data from MITMA, Spain reprojected at Zona Básica de Salud (ZBS) level for Madrid and Àrea Bàsica de Salut (ABS) for Catalunya* (Version 1.0) [Data set]. Zenodo. [doi:10.5281/zenodo.23737062](https://doi.org/10.5281/zenodo.23737062) | trips between BHAs | CC BY 4.0 |
 | Departament de Salut and CatSalut, Generalitat de Catalunya, [Dades obertes de Catalunya](https://analisi.transparenciacatalunya.cat) | official ABS cases (Montcada), registered population, vaccination | open data licence of the Generalitat, attribution |
 | Comunidad de Madrid, [datos abiertos](https://datos.comunidad.madrid) | ZBS boundaries and population | CC BY 4.0 |
 | Instituto Nacional de Estadística ([INE](https://www.ine.es)): ADRH 2020, census sections 2020, Census 2021 | census covariates | reuse with attribution ("Fuente: INE") |

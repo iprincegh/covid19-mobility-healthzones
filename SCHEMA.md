@@ -1,9 +1,9 @@
-# COVID-19 panel tables by health area: schema
+# COVID-19 panel tables by basic health area: schema
 
-One table per region, **one row per health area (ABS in Catalunya, ZBS in Madrid) and day**, 2020-03-01 →
+One table per region, **one row per basic health area (BHA: ABS in Catalunya, ZBS in Madrid) and day**, 2020-03-01 →
 2021-05-01 (427 days), key `id` + `date`.
 
-| Table | Health areas | Rows | Columns |
+| Table | Basic health areas | Rows | Columns |
 |---|---|---|---|
 | `outputs/catalunya/panel/cat_abs_main_noncollinear` | 374 ABS | 159,698 | 34 |
 | `outputs/catalunya/panel/cat_abs_full_allcovariates` | 374 ABS | 159,698 | 56 |
@@ -47,20 +47,20 @@ Each column comes from one per-source table in `outputs/<region>/tables/`
 
 | Column | Type | Content | Source | Table |
 |---|---|---|---|---|
-| `id` | chr | ABS / ZBS code (`"001"`) | Flow-Maps | every table |
+| `id` | chr | BHA code, 3 characters (`"001"`): the official ABS code (`ABSCodi`, Catalunya) or ZBS `codigo_geo` (Madrid), zero-padded; 381 and 382 are the two Flow-Maps halves of Montcada i Reixac (official ABS 302) | Flow-Maps | every table |
 | `date` | Date | day | | every daily table |
-| `name` | chr | health area name | Flow-Maps | `*_areas` |
+| `name` | chr | BHA name | Flow-Maps | `*_areas` |
 | `area_km2` | num | surface, km² | | `*_areas` |
 | `new_cases` | int | confirmed cases that day; Madrid's negative revisions are subtracted from the preceding days | Flow-Maps; ABS 381, 382 from the official Catalunya series (README) | `*_cases_daily` |
 | `total_cases` | int | cumulative cases from 2020-03-01 | Flow-Maps; ABS 381, 382 as above | `*_cases_daily` |
-| `reporting` *(Madrid)* | chr | `daily`, or `weekly` from 2020-07-07 (weekly totals on Tuesdays) | Flow-Maps | `*_cases_daily` |
+| `reporting` *(Madrid)* | chr | `daily` to 2020-07-01, then `weekly`: weekly totals, mostly on Tuesdays from 2020-07-07 | Flow-Maps | `*_cases_daily` |
 | `pop` | num | residents: RCA 2021 (Catalunya), padrón 2019 (Madrid) | CatSalut, Comunidad de Madrid | `*_population` |
 
 ### Daily
 
 | Column | Type | Content | Source | Table |
 |---|---|---|---|---|
-| `trips_internal`, `trips_out`, `trips_in` | num | trips within, out of, into the health area | MITMA | `*_mobility_daily` |
+| `trips_internal`, `trips_out`, `trips_in` | num | trips within, out of, into the BHA | MITMA, projected onto BHAs (Zenodo, README) | `*_mobility_daily` |
 | `total_population`, `moving_population` | num | MITMA population; people making ≥ 1 trip | Flow-Maps | `*_mobility_daily` |
 | `vacc_dose1`, `vacc_complete` *(Catalunya)* | num | share with ≥ 1 dose; share fully vaccinated | CatSalut | `*_vaccination_daily` |
 | `temp_mean`, `temp_min`, `temp_max` | num | daily temperature, °C | AEMET | `*_weather_daily` |
@@ -75,11 +75,11 @@ Each column comes from one per-source table in `outputs/<region>/tables/`
 
 Restrictions are coded at regional level.
 
-### Static per health area
+### Static per BHA
 
 **Census covariates** (`*_census_covariates`; INE ADRH 2020, Census 2021). Census sections that cross
-health area borders are split by where their residents live (GHS-POP);
-`*_census_covariates_point.csv` assigns each section whole to one health area.
+BHA borders are split by where their residents live (GHS-POP);
+`*_census_covariates_point.csv` assigns each section whole to one BHA.
 
 | Column | Content |
 |---|---|
@@ -91,7 +91,7 @@ health area borders are split by where their residents live (GHS-POP);
 | `density` | people per km² |
 
 **Points of interest and health facilities** (`*_osm_pois`; OpenStreetMap, Geofabrik
-extracts): counts of features inside each health area. Polygons count as one point,
+extracts): counts of features inside each BHA. Polygons count as one point,
 and a feature mapped twice counts once.
 
 | Column | Category | `fclass` → OSM tag |
@@ -126,9 +126,9 @@ Excluded from the counts (street furniture, landmarks, open land):
 
 | Column | Content | Source |
 |---|---|---|
-| `built_share` | built-up surface / health area surface, 0–1 | GHS-BUILT-S 2020 |
+| `built_share` | built-up surface / BHA surface, 0–1 | GHS-BUILT-S 2020 |
 | `n_buildings`, `buildings_per_km2` | OSM buildings; per km² | OSM |
-| `lu_residential` | share of the health area (0-1) under landuse=residential | OSM |
+| `lu_residential` | share of the BHA (0-1) under landuse=residential | OSM |
 | `lu_commercial` | … landuse=commercial, landuse=retail | OSM |
 | `lu_industrial` | … landuse=industrial, landuse=quarry | OSM |
 | `lu_agricultural` | … landuse=farmland, farmyard, orchard, vineyard, meadow, allotments | OSM |

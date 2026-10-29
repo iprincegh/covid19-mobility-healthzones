@@ -1,4 +1,4 @@
-# Panel tables: the per-source tables joined into one row per health area and day.
+# Panel tables: the per-source tables joined into one row per BHA and day.
 
 suppressPackageStartupMessages({library(arrow); library(dplyr)})
 

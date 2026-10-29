@@ -1,4 +1,4 @@
-# Region settings and health-area geometry, defined once for every script.
+# Region settings and BHA geometry, defined once for every script.
 
 suppressPackageStartupMessages({library(sf); library(dplyr)})
 
@@ -22,8 +22,8 @@ region = function(name) {
 	REGIONS[[name]]
 }
 
-# Health areas in UTM, ordered by id
-area_geometry = function(name, dir = "data/flowmaps-data") {
+# BHAs in UTM, ordered by id
+bha_geometry = function(name, dir = "data/flowmaps-data") {
 	cfg = region(name)
 	read_sf(file.path(dir, paste0(cfg$prefix, ".geojson"))) |>
 		st_transform(cfg$crs) |>
@@ -32,7 +32,7 @@ area_geometry = function(name, dir = "data/flowmaps-data") {
 }
 
 # Queen adjacency (binary) and distances (km), for any spatial model
-area_topology = function(g, snap = 1) {
+bha_topology = function(g, snap = 1) {
 	stopifnot(inherits(g, "sf"), !st_is_longlat(g))
 	# snap 1 m closes floating-point gaps between neighbours
 	nb = spdep::poly2nb(g, queen = TRUE, snap = snap)

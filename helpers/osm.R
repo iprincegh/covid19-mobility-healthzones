@@ -1,4 +1,4 @@
-# OpenStreetMap points of interest and health facilities per health area (Geofabrik extracts).
+# OpenStreetMap points of interest and health facilities per BHA (Geofabrik extracts).
 
 suppressPackageStartupMessages({library(sf); library(dplyr); library(tidyr)})
 
@@ -41,13 +41,13 @@ osm_layer = function(name, layer, cols = "osm_id, fclass", where = NULL) {
 	read_sf(f, query = paste0("SELECT ", cols, " FROM ", layer, if (!is.null(where)) paste(" WHERE", where)))
 }
 
-# All candidate features as points in the health areas' CRS
-osm_features = function(name, areas) {
+# All candidate features as points in the BHAs' CRS
+osm_features = function(name, bha) {
 	pofw = \(l) osm_layer(name, l) |> mutate(fclass = "place_of_worship")
 	pts = bind_rows(osm_layer(name, "gis_osm_pois_free_1"), pofw("gis_osm_pofw_free_1"),
 			osm_layer(name, "gis_osm_transport_free_1"),
 			osm_layer(name, "gis_osm_traffic_free_1", where = "fclass = 'fuel'")) |>
-		st_transform(st_crs(areas))                                   # CRS: WGS84 -> health areas' UTM
+		st_transform(st_crs(bha))                                   # CRS: WGS84 -> BHAs' UTM
 	pol = bind_rows(osm_layer(name, "gis_osm_pois_a_free_1"), pofw("gis_osm_pofw_a_free_1"),
 			osm_layer(name, "gis_osm_transport_a_free_1"),
 			osm_layer(name, "gis_osm_traffic_a_free_1", where = "fclass = 'fuel'"),
@@ -55,7 +55,7 @@ osm_features = function(name, areas) {
 				"type IN ('apartments', 'commercial', 'office')") |> mutate(fclass = paste0("building_", fclass)),
 			osm_layer(name, "gis_osm_landuse_a_free_1",
 				where = "fclass IN ('industrial', 'quarry', 'farmyard', 'construction')") |> mutate(fclass = paste0("landuse_", fclass))) |>
-		st_transform(st_crs(areas)) |>
+		st_transform(st_crs(bha)) |>
 		st_make_valid()
 	# a facility mapped as both point and polygon counts once
 	dup = mapply(\(i, f) any(pol$fclass[i] == f), st_within(pts, pol), pts$fclass)
@@ -63,25 +63,25 @@ osm_features = function(name, areas) {
 	bind_rows(pts[!dup, ], st_set_agr(pol, "constant") |> st_point_on_surface())
 }
 
-# Classified points with the health area each falls in
-osm_points = function(name, areas = area_geometry(name)) {
+# Classified points with the BHA each falls in
+osm_points = function(name, bha = bha_geometry(name)) {
 	category = setNames(rep(names(POI_CLASSES), lengths(POI_CLASSES)), unlist(POI_CLASSES))
-	osm_features(name, areas) |>
+	osm_features(name, bha) |>
 		st_set_agr("constant") |>
-		st_join(areas["id"], join = st_within) |>
+		st_join(bha["id"], join = st_within) |>
 		filter(!is.na(id)) |>                       # outside the region
 		mutate(category = if_else(fclass %in% POI_DROP | grepl(POI_DROP_PREFIX, fclass), NA,
 			coalesce(category[fclass], "poi_other")))
 }
 
-# Plain counts per health area by category, plus pharmacies
-osm_counts = function(name, areas = area_geometry(name), pts = osm_points(name, areas)) {
+# Plain counts per BHA by category, plus pharmacies
+osm_counts = function(name, bha = bha_geometry(name), pts = osm_points(name, bha)) {
 	f = st_drop_geometry(pts)
 	cols = c(names(POI_CLASSES), "poi_other")
 	poi = f |> filter(!is.na(category)) |> count(id, category) |>
 		pivot_wider(names_from = category, values_from = n, values_fill = 0)
 	poi[setdiff(cols, names(poi))] = 0L
-	tibble(id = areas$id) |>
+	tibble(id = bha$id) |>
 		left_join(select(poi, id, all_of(cols)), by = "id") |>
 		left_join(count(filter(f, fclass == "pharmacy"), id, name = "n_pharmacy"), by = "id") |>
 		mutate(across(-id, \(v) as.integer(coalesce(v, 0))))

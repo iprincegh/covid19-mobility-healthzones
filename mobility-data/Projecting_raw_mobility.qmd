@@ -7,7 +7,7 @@ The origin destination data from R package `spanishoddata` are available at the 
 across BHAs by population (GHS-POP 2020, 100 m).
 
 ### Access to the data
-You can download the projected mobility data directly from this [zenodo link](https://doi.org/10.5281/zenodo.23737061). 
+You can download the projected mobility data directly from this [zenodo link](https://doi.org/10.5281/zenodo.23737062). 
 
 In case you want to go through how to create the projected mobility data follow the following steps: 
 
@@ -18,6 +18,10 @@ In case you want to go through how to create the projected mobility data follow 
 ### Setup
 
 ```{r}
+root = normalizePath(if (dir.exists("helpers")) "." else "..")
+setwd(root)
+knitr::opts_knit$set(root.dir = root)
+
 library(sf)
 library(dplyr)
 library(tidyr)
@@ -27,8 +31,8 @@ library(spanishoddata)
 library(arrow)
 
 spod_set_data_dir("data/spanish_od")
-cat_geometry <- read_sf("./covid19-mobility-healthzones/outputs/catalunya/geometry/cat_abs.gpkg")
-mad_geometry <- read_sf("./covid19-mobility-healthzones/outputs/madrid/geometry/mad_zbs.gpkg")
+cat_geometry <- read_sf("outputs/catalunya/geometry/cat_abs.gpkg")
+mad_geometry <- read_sf("outputs/madrid/geometry/mad_zbs.gpkg")
 
 ```
 

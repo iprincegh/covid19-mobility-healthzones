@@ -1,5 +1,5 @@
 ---
-title: "Census sections to health areas: assignment check"
+title: "Census sections to BHAs: assignment check"
 format:
   html:
     embed-resources: true
@@ -8,13 +8,13 @@ execute:
   message: false
 ---
 
-Covariates are built from census sections. Sections and health areas were
+Covariates are built from census sections. Sections and BHAs were
 drawn independently and only mostly nest. Two rules move covariates across
 (`helpers/census_sections.R`):
 
-- **population** (main): a section straddling health areas is split by where its
+- **population** (main): a section straddling BHAs is split by where its
   residents live on the GHS-POP 100 m grid (dasymetric, Pebesma & Bivand ch. 5.3);
-- **point** (sensitivity): the whole section goes to the health area holding its
+- **point** (sensitivity): the whole section goes to the BHA holding its
   point on surface (supervisor's rule).
 
 Maps are in `figures.qmd`. Render with `quarto render reports/<file>.qmd` from the repository folder.
@@ -34,7 +34,7 @@ mad_x = section_check("madrid")
 
 ## How well the point rule nests
 
-Share of each section's residents living in the health area the point rule picks.
+Share of each section's residents living in the BHA the point rule picks.
 
 ```{r}
 lapply(list(catalunya = cat_x, madrid = mad_x), \(x) st_drop_geometry(x$sections) |>
@@ -47,7 +47,7 @@ lapply(list(catalunya = cat_x, madrid = mad_x), \(x) st_drop_geometry(x$sections
 ## What the rule changes
 
 Area covariates under both rules. Population totals are identical; points off
-the 1:1 line are health areas whose covariates moved.
+the 1:1 line are BHAs whose covariates moved.
 
 ```{r}
 cmp = list(catalunya = rule_comparison("catalunya"), madrid = rule_comparison("madrid"))

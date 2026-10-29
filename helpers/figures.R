@@ -56,8 +56,8 @@ npi_events = function(name) {
 	list(lines = lines, bands = n[short, c("start", "end", "label")])
 }
 
-# One thin line per health area, a smoothed regional trend, restrictions marked;
-# log = TRUE: log(1 + y) axis, so the spread between areas stays readable
+# One thin line per BHA, a smoothed regional trend, restrictions marked;
+# log = TRUE: log(1 + y) axis, so the spread between BHAs stays readable
 plot_spaghetti = function(x, var, title, ylab, events, log = FALSE) {
 	top = max(x[[var]], na.rm = TRUE)
 	y = if (log)
@@ -91,16 +91,16 @@ class_scale = function(labels, palette, key, reverse = FALSE) {
 	scale_fill_manual(values = setNames(if (reverse) rev(cols) else cols, labels), drop = FALSE, name = key)
 }
 
-map_classes = function(areas, x, var, breaks, labels, scale)
-	ggplot(left_join(areas["id"], x, by = "id") |>
+map_classes = function(bha, x, var, breaks, labels, scale)
+	ggplot(left_join(bha["id"], x, by = "id") |>
 			mutate(class = cut(.data[[var]], breaks, labels, include.lowest = TRUE))) +
 		geom_sf(aes(fill = class), colour = "white", linewidth = 0.03) +
 		scale + coord_sf(datum = LONLAT) + theme_map() +
 		guides(fill = guide_legend(nrow = 1))
 
-# Per-health-area values with different units: one map per variable, each with its own key
-map_values = function(x, areas, vars, title, palette = "YlOrRd") {
-	g = left_join(areas["id"], x, by = "id")
+# Per-BHA values with different units: one map per variable, each with its own key
+map_values = function(x, bha, vars, title, palette = "YlOrRd") {
+	g = left_join(bha["id"], x, by = "id")
 	panel = \(v) {
 		brks = unique(classInt::classIntervals(g[[v]], n = 5, style = "fisher")$brks)
 		ggplot(g) +
@@ -116,14 +116,14 @@ map_values = function(x, areas, vars, title, palette = "YlOrRd") {
 }
 
 # Same unit across variables: one facet per variable, one shared classed key
-map_facets = function(x, areas, vars, breaks, labels, palette, key, title, facet_labels = LABELS[vars]) {
-	g = left_join(areas["id"], x, by = "id") |>
+map_facets = function(x, bha, vars, breaks, labels, palette, key, title, facet_labels = LABELS[vars]) {
+	g = left_join(bha["id"], x, by = "id") |>
 		pivot_longer(all_of(vars)) |>
 		mutate(name = factor(setNames(facet_labels, vars)[name], facet_labels),
 			class = cut(value, breaks, labels, include.lowest = TRUE))
 	ggplot(g) +
 		geom_sf(aes(fill = class), colour = NA) +
-		geom_sf(data = st_geometry(areas), fill = NA, colour = "white", linewidth = 0.03) +
+		geom_sf(data = st_geometry(bha), fill = NA, colour = "white", linewidth = 0.03) +
 		scale_fill_brewer(palette = palette, drop = FALSE, name = key) +
 		facet_wrap(~ name, ncol = 3) +
 		coord_sf(datum = LONLAT) +
@@ -133,10 +133,10 @@ map_facets = function(x, areas, vars, breaks, labels, palette, key, title, facet
 }
 
 # Points of interest by category, health facilities drawn on top
-map_pois = function(pts, areas, title) {
+map_pois = function(pts, bha, title) {
 	p = filter(pts, !is.na(category)) |> mutate(health = category == "poi_health") |> arrange(health)
 	ggplot() +
-		geom_sf(data = areas, fill = "grey97", colour = "grey60", linewidth = 0.1) +
+		geom_sf(data = bha, fill = "grey97", colour = "grey60", linewidth = 0.1) +
 		geom_sf(data = p, aes(colour = category, size = health), alpha = 0.5) +
 		scale_colour_manual(values = POI_COLOURS, labels = LABELS, name = NULL) +
 		scale_size_manual(values = c(`FALSE` = 0.03, `TRUE` = 0.12), guide = "none") +
@@ -147,23 +147,23 @@ map_pois = function(pts, areas, title) {
 		theme(legend.position = "right")
 }
 
-# Sections with the share of their residents living in their point-assigned health area
+# Sections with the share of their residents living in their point-assigned BHA
 section_check = function(name) {
-	areas = area_geometry(name)
+	bha = bha_geometry(name)
 	provs = region(name)$provs
-	sec = read_sections(areas, provs)
-	share = section_lookup(areas, provs, sec) |>
-		left_join(section_weights(areas, provs, "population", sec), by = c("cusec", "id")) |>
+	sec = read_sections(bha, provs)
+	share = section_lookup(bha, provs, sec) |>
+		left_join(section_weights(bha, provs, "population", sec), by = c("cusec", "id")) |>
 		mutate(share = coalesce(w, 0)) |>
 		select(cusec, id, share)
 	sec = sec |>
 		left_join(share, by = "cusec") |>
 		mutate(share_class = cut(share, c(-Inf, .5, .9, .99, Inf), right = FALSE,
 			labels = c("< 50%", "50-90%", "90-99%", ">= 99%")))
-	list(areas = areas, sections = sec)
+	list(bha = bha, sections = sec)
 }
 
-# Covariates under both rules, long: one row per health area and covariate
+# Covariates under both rules, long: one row per BHA and covariate
 rule_comparison = function(name, vars = c("income_median", "pct_65plus", "pct_foreign", "pct_rented", "density")) {
 	long = \(rule) read_table(name, census_table(rule)) |>
 		select(id, all_of(vars)) |>

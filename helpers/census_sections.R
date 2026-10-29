@@ -1,4 +1,4 @@
-# Census-section covariates (ADRH 2020, Census 2021) aggregated to health areas.
+# Census-section covariates (ADRH 2020, Census 2021) aggregated to BHAs.
 
 suppressPackageStartupMessages({
 	library(sf); library(dplyr); library(tidyr); library(data.table)
@@ -6,25 +6,25 @@ suppressPackageStartupMessages({
 
 SECTIONS = "/vsizip/data/covariates/raw/ine_sections_2020/seccionado_2020.zip/SECC_CE_20200101.shp"
 
-# Section polygons in the health areas' CRS
-read_sections = function(areas, provs) {
-	stopifnot(inherits(areas, "sf"), !st_is_longlat(areas))
+# Section polygons in the BHAs' CRS
+read_sections = function(bha, provs) {
+	stopifnot(inherits(bha, "sf"), !st_is_longlat(bha))
 	read_sf(SECTIONS) |>
 		filter(substr(CUSEC, 1, 2) %in% provs) |>
 		select(cusec = CUSEC) |>
-		st_transform(st_crs(areas)) |>     # CRS: sections onto the health areas' UTM
+		st_transform(st_crs(bha)) |>     # CRS: sections onto the BHAs' UTM
 		st_make_valid() |>
 		st_set_agr("constant")
 }
 
-# cusec -> health area id, by point in polygon
-section_lookup = function(areas, provs, sec = read_sections(areas, provs)) {
+# cusec -> BHA id, by point in polygon
+section_lookup = function(bha, provs, sec = read_sections(bha, provs)) {
 	# point on surface: a centroid can fall outside its section
-	j = st_point_on_surface(sec) |> st_join(areas["id"], join = st_within)
+	j = st_point_on_surface(sec) |> st_join(bha["id"], join = st_within)
 	if (nrow(j) != nrow(sec) || anyNA(j$id))
-		stop("sections with no or several areas: ", nrow(j) - nrow(sec), " extra, ", sum(is.na(j$id)), " unassigned")
-	if (!all(areas$id %in% j$id))
-		stop("areas without sections: ", paste(setdiff(areas$id, j$id), collapse = ", "))
+		stop("sections with no or several BHAs: ", nrow(j) - nrow(sec), " extra, ", sum(is.na(j$id)), " unassigned")
+	if (!all(bha$id %in% j$id))
+		stop("BHAs without sections: ", paste(setdiff(bha$id, j$id), collapse = ", "))
 	st_drop_geometry(j)
 }
 
@@ -32,13 +32,13 @@ section_lookup = function(areas, provs, sec = read_sections(areas, provs)) {
 ghs_pop = function(dir = "data/ghs_pop")
 	terra::vrt(list.files(dir, pattern = "\\.tif$", recursive = TRUE, full.names = TRUE))
 
-# Section -> health area weights (1 per section). "population": a straddling section is
-# split by where its residents live; "point": all of it to the health area of its point
-section_weights = function(areas, provs, rule = c("population", "point"), sec = read_sections(areas, provs)) {
+# Section -> BHA weights (1 per section). "population": a straddling section is
+# split by where its residents live; "point": all of it to the BHA of its point
+section_weights = function(bha, provs, rule = c("population", "point"), sec = read_sections(bha, provs)) {
 	rule = match.arg(rule)
 	if (rule == "point")
-		return(section_lookup(areas, provs, sec) |> mutate(w = 1))
-	pieces = st_intersection(sec, select(areas, id) |> st_set_agr("constant")) |>
+		return(section_lookup(bha, provs, sec) |> mutate(w = 1))
+	pieces = st_intersection(sec, select(bha, id) |> st_set_agr("constant")) |>
 		st_collection_extract("POLYGON")
 	ghs = ghs_pop()
 	pieces$pop = exactextractr::exact_extract(ghs, st_transform(pieces, terra::crs(ghs)),
@@ -52,8 +52,8 @@ section_weights = function(areas, provs, rule = c("population", "point"), sec = 
 		ungroup() |>
 		filter(w > 0) |>
 		select(cusec, id, w)
-	if (!all(areas$id %in% w$id))
-		stop("areas without sections: ", paste(setdiff(areas$id, w$id), collapse = ", "))
+	if (!all(bha$id %in% w$id))
+		stop("BHAs without sections: ", paste(setdiff(bha$id, w$id), collapse = ", "))
 	w
 }
 
@@ -104,11 +104,11 @@ ratio = function(num, den, w = 1) {
 	sum((w * num)[ok]) / sum((w * den)[ok])
 }
 
-# One row per health area: counts summed, shares rebuilt as counts over their own
+# One row per BHA: counts summed, shares rebuilt as counts over their own
 # denominator, each section weighted by w
-area_covariates = function(name, rule = "population", areas = area_geometry(name)) {
+bha_covariates = function(name, rule = "population", bha = bha_geometry(name)) {
 	provs = region(name)$provs
-	section_weights(areas, provs, rule) |>
+	section_weights(bha, provs, rule) |>
 		left_join(read_adrh(provs), by = "cusec") |>
 		left_join(read_censo(provs), by = "cusec") |>
 		mutate(pop16 = t1_1 * (1 - t4_1), active = t12_1 * pop16) |>
@@ -126,7 +126,7 @@ area_covariates = function(name, rule = "population", areas = area_geometry(name
 			pct_rented = ratio(t20_2, t19_1, w),
 			pct_hh5plus = ratio(t22_5, t21_1, w)
 		) |>
-		left_join(tibble(id = areas$id, km2 = as.numeric(st_area(areas)) / 1e6), by = "id") |>
+		left_join(tibble(id = bha$id, km2 = as.numeric(st_area(bha)) / 1e6), by = "id") |>
 		mutate(density = pop_census / km2) |>
 		select(-km2)
 }

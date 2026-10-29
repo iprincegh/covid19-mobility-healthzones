@@ -1,4 +1,4 @@
-# Building density and land use per health area (static).
+# Building density and land use per BHA (static).
 
 suppressPackageStartupMessages({library(sf); library(dplyr); library(tidyr)})
 
@@ -9,7 +9,7 @@ ghs_built = function(dir = "data/ghs_built") {
 	terra::vrt(f)
 }
 
-# OSM land-use classes grouped; shares of each health area's surface
+# OSM land-use classes grouped; shares of each BHA's surface
 LANDUSE = list(
 	lu_residential = "residential",
 	lu_commercial = c("commercial", "retail"),
@@ -18,34 +18,34 @@ LANDUSE = list(
 	lu_green = c("forest", "scrub", "grass", "heath", "park", "recreation_ground", "nature_reserve")
 )
 
-land_use = function(name, areas = area_geometry(name)) {
-	area_m2 = as.numeric(st_area(areas))
+land_use = function(name, bha = bha_geometry(name)) {
+	area_m2 = as.numeric(st_area(bha))
 	ghs = ghs_built()
-	built = exactextractr::exact_extract(ghs, st_transform(areas, terra::crs(ghs)),
+	built = exactextractr::exact_extract(ghs, st_transform(bha, terra::crs(ghs)),
 		"sum", progress = FALSE)
 	group = setNames(rep(names(LANDUSE), lengths(LANDUSE)), unlist(LANDUSE))
 	lu = osm_layer(name, "gis_osm_landuse_a_free_1",
 			where = sprintf("fclass IN (%s)", paste0("'", unlist(LANDUSE), "'", collapse = ", "))) |>
-		st_transform(st_crs(areas)) |>
+		st_transform(st_crs(bha)) |>
 		st_make_valid() |>
 		transmute(group = group[fclass]) |>
 		st_set_agr("constant")
-	# land-use surface inside each health area, by group
-	shares = st_intersection(lu, st_set_agr(areas["id"], "constant")) |>
+	# land-use surface inside each BHA, by group
+	shares = st_intersection(lu, st_set_agr(bha["id"], "constant")) |>
 		mutate(m2 = as.numeric(st_area(geometry))) |>
 		st_drop_geometry() |>
 		count(id, group, wt = m2, name = "m2") |>
 		pivot_wider(names_from = group, values_from = m2, values_fill = 0)
 	# each building counted once, by its point on surface
 	bld = osm_layer(name, "gis_osm_buildings_a_free_1", "osm_id") |>
-		st_transform(st_crs(areas)) |>
+		st_transform(st_crs(bha)) |>
 		st_make_valid() |>
 		st_set_agr("constant") |>
 		st_point_on_surface() |>
-		st_join(areas["id"], join = st_within) |>
+		st_join(bha["id"], join = st_within) |>
 		st_drop_geometry() |>
 		count(id, name = "n_buildings")
-	x = tibble(id = areas$id, area_m2 = area_m2, built_share = built / area_m2) |>
+	x = tibble(id = bha$id, area_m2 = area_m2, built_share = built / area_m2) |>
 		left_join(shares, by = "id") |>
 		left_join(bld, by = "id")
 	x[setdiff(names(LANDUSE), names(x))] = 0

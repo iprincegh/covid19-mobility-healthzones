@@ -1,4 +1,4 @@
-# Step 4: daily weather per health area, interpolated from AEMET stations.
+# Step 4: daily weather per BHA, interpolated from AEMET stations.
 
 source("helpers/regions.R")
 source("helpers/tables.R")

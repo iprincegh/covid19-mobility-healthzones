@@ -3,7 +3,7 @@ title: "Re-projecting MITMA flows onto Basic health areas"
 format: html
 ---
 
-The origin destination data from R package `spanishoddata` are available at the district level, whereas we would require them to be at ABS/ZBS level, we project them using the same approach as Ponce-de-Leon et.al, 2024 splitting each MITMA district
+The origin destination data from R package `spanishoddata` are available at the district level, whereas we would require them to be at ABS/ZBS level, we project them following Ponce-de-León et al. (2021, Scientific Data, doi:10.1038/s41597-021-01093-5), splitting each MITMA district
 across BHAs by population (GHS-POP 2020, 100 m).
 
 ### Access to the data
